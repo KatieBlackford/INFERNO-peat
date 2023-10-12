@@ -1,2 +1,2 @@
 # INFERNO-peat
-An offline model of peat fires using the  INteractive Fire and Emission algoRithm for Natural envirOnments (INFERNO) framework and outputs
+An offline model of peat fires using the INteractive Fire and Emission algoRithm for Natural envirOnments (INFERNO) model framework and outputs.
