@@ -37,12 +37,14 @@ from matplotlib.ticker import MaxNLocator
 # bd_method = 1 or 2
 #             1 = Fixed burn depth at 12cm, but modified by height of water table 
 #             2 = Modelled burn depth through calculating critical temperature
+# max_burndepth = 40cm max burn depth is used - please set this variable as 4 
+#(refers to the 4th soil layer, which is 40cm deep)
 # avg_ba = average peat fire burned area. Please use 381.7 - other values have 
 #          not been fully tested and evaluated
 # save = true/false whether or not to save output files
 # output_folder = file path to where you want files to be saved. 
 
-def model_peat_fires(base, year, plot, peat_data, ig_method, bd_method, avg_ba, save, output_folder):
+def model_peat_fires(base, year, plot, peat_data, ig_method, bd_method, max_burndepth, avg_ba, save, output_folder):
     # 1. Calculate peat fire ignitions
     # Load initial required files (JULES PFT flammability and fractions)
     var_constraint1 = iris.Constraint(cube_func=lambda x: x.var_name == 'flammability')
@@ -465,30 +467,27 @@ def model_peat_fires(base, year, plot, peat_data, ig_method, bd_method, avg_ba, 
                     for lon in range(len(tcrt_cube.coord('longitude').points)):
                         tcrt_cube.data[month][layer][lat][lon] = (42*sm_cube.data[month][lat][lon]) - 28
     
+        soil_depths = [0.05, 0.134, 0.248, 0.389, 0.556,
+               0.748, 0.963, 1.201, 1.461, 1.742,
+               2.044, 2.366, 2.708, 3.07, 3.87,
+               4.67, 5.47, 6.27, 7.07, 7.87]
+
         for month in range(len(tcrt_cube.coord('time').points)):
             for lat in range(len(tcrt_cube.coord('latitude').points)):
                 for lon in range(len(tcrt_cube.coord('longitude').points)):
                     if ba_frac_cube.data[month][lat][lon] > 0:
-                        for n in range(0,4):
+                        burndepth_cube.data[month][lat][lon] = 0.01
+                        for n in range(0,max_burndepth):
+                            #print('testing layer: ',n)
                             if tcrt_cube.data[month][n][lat][lon] < soil_temp_cube.data[month][n][lat][lon]:
-                                burndepth_cube.data[month][lat][lon] = n
+                                burndepth_cube.data[month][lat][lon] = soil_depths[n]
+                                #print('fire in this layer')
+                            else:
                                 break
-                            elif n == 3:
-                                burndepth_cube.data[month][lat][lon] = 3
-                            elif tcrt_cube.data[month][n][lat][lon] > soil_temp_cube.data[month][n][lat][lon]:
-                                burndepth_cube.data[month][lat][lon] = 1
-        
+                    
         for month in range(len(burndepth_cube.coord('time').points)):
             for lat in range(len(burndepth_cube.coord('latitude').points)):
-                for lon in range(len(burndepth_cube.coord('longitude').points)):
-                    if burndepth_cube.data[month][lat][lon] == 0:
-                        burndepth_cube.data[month][lat][lon] = 0.1
-                    elif burndepth_cube.data[month][lat][lon] == 1:
-                        burndepth_cube.data[month][lat][lon] = 0.35
-                    elif burndepth_cube.data[month][lat][lon] == 2:
-                        burndepth_cube.data[month][lat][lon] = 1.0
-                    elif burndepth_cube.data[month][lat][lon] == 3:
-                        burndepth_cube.data[month][lat][lon] = 3.0
+                for lon in range(len(burndepth_cube.coord('longitude').points)):                
                     if burndepth_cube.data[month][lat][lon] > water_table_cube.data[month][lat][lon]:
                         burndepth_cube.data[month][lat][lon] = water_table_cube.data[month][lat][lon]
     
@@ -513,11 +512,12 @@ def model_peat_fires(base, year, plot, peat_data, ig_method, bd_method, avg_ba, 
 # ba_cube = burnt area cube (km2)
 # bd_cube = burn depth cube (m)
 # year = year you want to run (str format)
+# combust_completeness = 0.8 - please use 0.8 as a fixed value for combustion completeness
 # graph = true/false whether you want to plot a map of carbon emissions
 # save = true/flase whether you want to save the outputted carbon emission cube
 # output_folder = file path where you want output to be saved to
 
-def calc_carbon_emissions(base_cube, ba_cube, bd_cube, year, graph, save, output_folder):
+def calc_carbon_emissions(base_cube, ba_cube, bd_cube, year, combust_completeness, graph, save, output_folder):
     # Load and regrid peat carbon
     peat_c = iris.load_cube('/path/to/file.nc')
     scheme = iris.analysis.AreaWeighted()
@@ -534,7 +534,7 @@ def calc_carbon_emissions(base_cube, ba_cube, bd_cube, year, graph, save, output
                                                               (lat_coord, 1),
                                                               (lon_coord, 2)])
     
-    # Calculate carbon emissions as carbon content of peat * depth of burn * burnt area
+    # Calculate carbon emissions as carbon content of peat * depth of burn * combust_completeness * burnt area
     for month in range(len(ba_cube.coord('time').points)):
         for lat in range(len(ba_cube.coord('latitude').points)):
             for lon in range(len(ba_cube.coord('longitude').points)):
@@ -542,7 +542,7 @@ def calc_carbon_emissions(base_cube, ba_cube, bd_cube, year, graph, save, output
                 area = ba_cube.data[month][lat][lon]*1e+6
                 depth = bd_cube.data[month][lat][lon]
                 depth_frac = depth/3
-                emitted_carbon_cube.data[month][lat][lon] = (carbon * depth_frac * area)/1000
+                emitted_carbon_cube.data[month][lat][lon] = (carbon * depth_frac * combust_completeness * area)/1000
 
     # Option to plot a map of carbon emissions
     if graph == "true":    
